@@ -12,7 +12,7 @@ DOCKER_VOLUME_HOME ?= $(shell whoami)-home
 
 # Interactive images
 HOST_DIR ?= $(shell pwd)
-USER_IMG := user_img-$(shell whoami)
+USER_IMG := user_aws_py-$(shell whoami)
 EXTRA_DOCKER_RUN_ARGS := -u $(shell id -u):$(shell id -g)
 
 .PHONY: user
