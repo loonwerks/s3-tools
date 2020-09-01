@@ -25,7 +25,6 @@ import xml.etree.ElementTree as ElementTree
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from botocore.exceptions import ClientError
-from cupshelpers.config import prefix
 from gi.importer import repository
 from mako.template import Template
 from posixpath import join as urljoin
@@ -199,10 +198,10 @@ def update_composite_artifacts(s3_client, bucket, repo_prefix, child_location, n
     P2CompositeUtils.update_timestamp(root, new_timestamp)
     try:
         upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
-        os.close(file_obj)
+        file_obj.close()
     except ClientError as e:
         logging.error(e)
-        os.close(file_obj)
+        file_obj.close()
         raise e
 
 def add_repository_to_composite(repository, bucket_name, prefix, new_child):
