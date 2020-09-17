@@ -15,20 +15,17 @@ It defines classes_and_methods
 import boto3
 import logging
 import os
-import P2CompositeUtils
-import pathlib
+import pprint
 import sys
-import tempfile
-import time
 import xml.etree.ElementTree as ElementTree
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-from botocore.exceptions import ClientError
 from gi.importer import repository
-from mako.template import Template
 from posixpath import join as urljoin
 
+import P2CompositeUtils
+import S3Utils
 
 __all__ = []
 __version__ = 0.1
@@ -41,204 +38,8 @@ PROFILE = 0
 
 DEFAULT_SITE = '''http://ca-trustedsystems-dev-us-east-1.s3-website-us-east-1.amazonaws.com/'''
 DEFAULT_BUCKET_NAME = '''ca-trustedsystems-dev-us-east-1'''
+DEFAULT_BUCKET_PREFIX = '''p2'''
 
-COMPOSITE_ARTIFACTS_TEMPLATE = Template(
-'''<?xml version='1.0' encoding='UTF-8'?>
-<?compositeArtifactRepository version='1.0.0'?>
-<repository name='&quot;${name}&quot;'
-    type='org.eclipse.equinox.internal.p2.artifact.repository.CompositeArtifactRepository' version='1.0.0'>
-  <properties size='1'>
-    <property name='p2.timestamp' value='${timestamp}'/>
-  </properties>
-  <children size='${len(contents)}'>
-% for element in contents:
-    <child location='${element}'/>
-% endfor
-  </children>
-</repository>
-''')
-
-COMPOSITE_CONTENT_TEMPLATE = Template(
-'''<?xml version='1.0' encoding='UTF-8'?>
-<?compositeMetadataRepository version='1.0.0'?>
-<repository name='&quot;${name}&quot;'
-    type='org.eclipse.equinox.internal.p2.metadata.repository.CompositeMetadataRepository' version='1.0.0'>
-  <properties size='1'>
-    <property name='p2.timestamp' value='${timestamp}'/>
-  </properties>
-  <children size='${len(contents)}'>
-% for element in contents:
-    <child location='${element}'/>
-% endfor
-  </children>
-</repository>
-''')
-
-def get_common_prefixes(bucket, prefix):
-    """Get the prefixes common to the given prefix in the given bucket
-    
-    :param bucket: Bucket to query for common prefixes
-    :param prefix: string prefix at which query
-    :return: List containing the common prefixes
-    """
-    query_result = bucket.meta.client.list_objects(Bucket=bucket.name,
-                                                   Prefix=prefix,
-                                                   Delimiter='/')
-    try:
-        common_prefixes = [o.get('PrefiX') for o in query_result.get('CommonPrefixes')]
-    except ClientError as e:
-        logging.error(e)
-        raise
-    return common_prefixes
-
-def upload_file(file_name, s3_client, bucket, object_name=None):
-    """Upload a file to an S3 bucket
-
-    :param file_name: String path to file to upload
-    :param s3_client Boto s3_client object to apply
-    :param bucket: Boto Bucket object to upload to
-    :param object_name: S3 object name. If not specified then file_name is used
-    :return: True if file was uploaded, else False
-    """
-    # If S3 object_name was not specified, use file_name
-    if object_name is None:
-        object_name = file_name
-
-    # Upload the file
-    try:
-        #s3_client.upload_file(file_name, bucket, object_name, ExtraArgs={'ACL': 'public-read'})
-        print('Uploading file {} to bucket {} key {}'.format(file_name, bucket.name, object_name))
-    except ClientError as e:
-        logging.error(e)
-        raise
-    return True
-
-def upload_string(body, s3_client, bucket, object_name):
-    """Upload a string as to the contents of an S3 bucket
-
-    :param body: String contents to be placed in the named object
-    :param s3_client Boto s3_client object to apply
-    :param bucket: Boto Bucket object to upload to
-    :param object_name: S3 object name
-    :return: True if file was uploaded, else False
-    """
-    try:
-        s3_client.put_object(Body=body, Bucket=bucket, Key=object_name, ExtraArgs={'ACL': 'public-read'})
-        print('Uploading string body to {} to {}'.format(object_name, bucket.name))
-    except ClientError as e:
-        logging.error(e)
-        raise
-    return True
-
-def upload_repository(repository, s3_client, bucket, prefix):
-    """Upload a P2 repository to a prefix on an S3 bucket
-
-    :param repository: Path to the repository to upload
-    :param s3_client Boto s3_client object to apply
-    :param bucket: Bucket to upload to
-    :param prefix: Prefix at which to upload the repository
-    :return: True if repository was uploaded, else False
-    """
-    try:
-        for dir_name, _, file_list in os.walk(repository):
-            for file_name in file_list:
-                file_path = os.path.join(dir_name, file_name)
-                upload_file(file_path, s3_client, bucket, 
-                            urljoin(prefix, pathlib.PurePosixPath(os.path.relpath(file_path, repository))))
-    except ClientError as e:
-        logging.error(e)
-        return False
-    return True
-
-def get_spooled_file_object(s3_client, bucket, key):
-    """Get a temporary spooled file object for an S3 object
-
-    :param s3_client Boto s3_client object to apply
-    :param bucket: Bucket to upload to
-    :param key: key identifying the object within the bucket
-    """
-    result = tempfile.SpooledTemporaryFile()
-    s3_client.download_fileobj(bucket, key, result)
-    result.seek(0)
-    return result
-
-def upload_file_object(s3_client, bucket, key, file):
-    """Upload a file object for an S3 object
-
-    :param s3_client Boto s3_client object to apply
-    :param bucket: Bucket to upload to
-    :param key: key identifying the object within the bucket
-    :param file: the file object to be uploaded
-    """
-    file.seek(0)
-    s3_client.upload_fileobj(file, bucket, key)
-
-def update_composite_artifacts(s3_client, bucket, repo_prefix, child_location, new_timestamp=None):
-    """Update the P2 compositeArtifacts.xml
-    """
-    composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
-    file_obj = tempfile.SpooledTemporaryFile()
-    try:
-        s3_client.download_fileobj(bucket, composite_artifacts_key, file_obj)
-    except ClientError as e:
-        if e.response.hasKey('ResponseMetadata') and e.response['ResponseMetadata'].hasKey('HTTPStatusCode') and e.response['ResponseMetadata']['HTTPStatusCode'] == 404:
-            logging.info('{key} not found, generating initial composite artifacts'.format(key=composite_artifacts_key))
-            file_obj.seek(0)
-            file_obj.truncate()
-            file_obj.write(P2CompositeUtils.EMPTY_COMPOSITE_ARTIFACTS.encode('utf-8'))
-        else:
-            logging.error(e)
-            raise e
-    file_obj.seek(0)
-    tree = ElementTree.parse(file_obj)
-    root = tree.getroot()
-    children = P2CompositeUtils.get_children(root)
-    P2CompositeUtils.add_child(root, child_location)
-    children.attrib['size'] = len(children)
-    P2CompositeUtils.update_timestamp(root, new_timestamp)
-    try:
-        upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
-        file_obj.close()
-    except ClientError as e:
-        logging.error(e)
-        file_obj.close()
-        raise e
-
-def add_repository_to_composite(repository, bucket_name, prefix, new_child):
-    """Upload a P2 repository to a prefix containing a composite repository on an S3 bucket
-
-    :param repository: Path to the repository to upload
-    :param bucket: Bucket to upload to
-    :param prefix: Prefix at which the composite repository is found
-    :param new_child: the extension to the prefix where the child is to be located
-    :return: True if repository was uploaded, else False
-    """
-    try:
-        session = boto3.Session(profile_name='AWSFed-comm-dev')
-        s3_resource = session.resource('s3')
-        s3_client = session.client('s3')
-        bucket = s3_resource.Bucket(bucket_name)
-        existing_children = get_common_prefixes(bucket, prefix)
-        upload_repository(repository, s3_client, bucket, urljoin(prefix, new_child))
-        #children = existing_children + [new_child]
-        timestamp = int(round(time.time() * 1000.0))
-        update_composite_artifacts(s3_client, bucket.name, prefix, new_child, timestamp)
-        #upload_string(COMPOSITE_ARTIFACTS_TEMPLATE.render(name='Composite P2', contents=children, timestamp=timestamp), s3_client, bucket, urljoin(prefix, 'compositeArtifacts.xml'))
-        #upload_string(COMPOSITE_CONTENT_TEMPLATE.render(name='Composite P2', contents=children, timestamp=timestamp), s3_client, bucket, urljoin(prefix, 'compositeContents.xml'))
-    except ClientError as e:
-        logging.error(e)
-        return False
-    return True
-
-class CLIError(Exception):
-    '''Generic exception to raise and log different fatal errors.'''
-    def __init__(self, msg):
-        super(CLIError).__init__(type(self))
-        self.msg = "E: %s" % msg
-    def __str__(self):
-        return self.msg
-    def __unicode__(self):
-        return self.msg
 
 def main(argv=None): # IGNORE:C0111
     '''Command line options.'''
@@ -269,24 +70,61 @@ USAGE
     try:
         # Setup argument parser
         parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
-        parser.add_argument("-v", "--verbose", dest="verbose", action="count", help="set verbosity level [default: %(default)s]")
-        parser.add_argument('-V', '--version', action='version', version=program_version_message)
-        parser.add_argument(dest="paths", help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='+')
+        parser.add_argument("-v", "--verbose",
+            dest="verbose", action="count", help="set verbosity level [default: %(default)s]")
+        parser.add_argument('-V', '--version',
+            action='version', version=program_version_message)
+        parser.add_argument('--bucket', dest="bucket",
+            help="the AWS bucket in which to store the P2 composite repositories [default: %(default)]",
+            metavar="bucket",
+            default=DEFAULT_BUCKET_NAME)
+        parser.add_argument('--prefix', dest="prefix",
+            help="the key prefix in the AWS bucket at which to store the P2 composite repositories [default: %(default)]",
+            metavar="prefix",
+            default=DEFAULT_BUCKET_PREFIX)
+        parser.add_argument('--path', dest="path",
+            action='append',
+            help="paths to folder(s) with containing p2 repositories [default: %(default)s]",
+            metavar="path",
+            nargs='+',
+            required=True)
+        parser.add_argument('--child-name', dest="child_name",
+            action='append',
+            help="child names for each path [default: is the last segment of the corresponding path]",
+            metavar="child_name",
+            nargs='+')
 
         # Process arguments
         args = parser.parse_args()
 
-        paths = args.paths
+        bucket_name = args.bucket
+        bucket_prefix = args.prefix
+        paths = [item for sublist in args.path for item in sublist]
+        child_names = [item for sublist in ([] if args.child_name is None else args.child_name) for item in sublist]
+
         verbose = args.verbose
 
         if verbose > 0:
             print("Verbose mode on")
 
-        for inpath in paths:
-            ### do something with inpath ###
-            print(inpath)
+        pprint.pprint(paths)
+        pprint.pprint(child_names)
 
-        add_repository_to_composite('/home/kfhoech/git/AGREE-Updates/agree_2.5.1', DEFAULT_BUCKET_NAME, 'p2', 'agree_2.5.1')
+        if len(child_names) == 0:
+            child_names = [os.path.basename(os.path.normpath(p)) for p in paths]
+
+        if len(paths) != len(child_names):
+            print("Unequal path and child name list lengths")
+            sys.exit(-1)
+
+        cred = boto3.session.Session().get_credentials()
+        if cred is None:
+            print('Please provide Boto3 credentials.')
+            sys.exit(-1)
+
+        for inpath, child_name in zip(paths, child_names):
+            print('add_repository_to_composite(%s, %s, %s, %s)' % (inpath, bucket_name, bucket_prefix, child_name))
+            P2CompositeUtils.add_repository_to_composite(inpath, bucket_name, bucket_prefix, child_name)
 
         return 0
     except KeyboardInterrupt:
