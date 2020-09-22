@@ -99,6 +99,14 @@ EMPTY_COMPOSITE_CONTENT_XML = '''<?xml version='1.0' encoding='UTF-8'?>
 </repository>
 '''
 
+def is_location_url(x):
+    from urllib.parse import urlparse
+    try:
+        result = urlparse(x)
+        return all([result.scheme in ['http', 'https'], result.netloc, result.path])
+    except:
+        return False
+
 def get_properties(element_tree_root):
     properties = element_tree_root.findall('properties')
     if len(properties) < 1:
@@ -148,9 +156,7 @@ def write_to_string(element_tree_root):
 def read_from_string(xml_str):
     return ElementTree.fromstring(xml_str)
 
-def add_child_to_composite_artifacts(s3_client, bucket, repo_prefix, child_location, new_timestamp=None):
-    """Update the P2 compositeArtifacts.xml
-    """
+def get_composite_artifacts_xml(s3_client, bucket, repo_prefix):
     composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
     file_obj = tempfile.TemporaryFile()
     try:
@@ -164,16 +170,20 @@ def add_child_to_composite_artifacts(s3_client, bucket, repo_prefix, child_locat
             file_obj.truncate()
         else:
             logging.error(e)
+            file_obj.close()
             raise e
     file_obj.seek(0)
     tree = ElementTree.parse(file_obj)
-    root = tree.getroot()
-    children = get_children_element(root)
-    add_child(root, child_location)
-    children.attrib['size'] = str(len(children))
-    update_timestamp(root, new_timestamp)
     file_obj.seek(0)
-    file_obj.write(ElementTree.tostring(root, encoding='utf-8'))
+    print(file_obj.read().decode())
+    file_obj.close()
+    return tree
+
+def store_composite_artifacts_xml(s3_client, bucket, repo_prefix, tree):
+    composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
+    file_obj = tempfile.TemporaryFile()
+    file_obj.seek(0)
+    file_obj.write(ElementTree.tostring(tree.getroot(), encoding='utf-8'))
     file_obj.truncate()
     try:
         S3Utils.upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
@@ -182,6 +192,17 @@ def add_child_to_composite_artifacts(s3_client, bucket, repo_prefix, child_locat
         logging.error(e)
         file_obj.close()
         raise e
+
+def add_child_to_composite_artifacts(s3_client, bucket, repo_prefix, child_location, new_timestamp=None):
+    """Update the P2 compositeArtifacts.xml
+    """
+    tree = get_composite_artifacts_xml(s3_client, bucket, repo_prefix)
+    root = tree.getroot()
+    children = get_children_element(root)
+    add_child(root, child_location)
+    children.attrib['size'] = str(len(children))
+    update_timestamp(root, new_timestamp)
+    store_composite_artifacts_xml(s3_client, bucket, repo_prefix, tree)
 
 def remove_child_from_composite_artifacts(s3_client, bucket, repo_prefix, child_location, new_timestamp=None):
     """Update the P2 compositeArtifacts.xml
