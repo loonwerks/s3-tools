@@ -31,6 +31,7 @@ from pprint import pformat
 import P2CompositeUtils
 import S3Utils
 
+logger = logging.getLogger('s3tools')
 
 __all__ = []
 __version__ = 0.1
@@ -60,14 +61,15 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
         child_keys = {}
         for child in children_element.getchildren():
             child_location = child.get('location')
-            print('Checking child location %s' % (child_location))
+            logger.info('Checking child location %s' % (child_location))
             if child_location is None:
                 # Malformed child, delete from the tree
+                logger.warning("A child has no location, removing from composite")
                 children_element.remove(child)
             else:
                 # Skip those that are URLs
                 if P2CompositeUtils.is_location_url(child_location):
-                    print('Skipping URL child location %s' % (child_location))
+                    logger.info('Skipping URL child location %s' % (child_location))
                 else:
                     # Check that the child may be found and get its last modification time
                     last_modified = None
@@ -76,20 +78,21 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
                     # composites with this tool.
                     for bkey in S3Utils.get_matching_s3_contents(bucket.name, urljoin(bucket_prefix, child_location), 'p2.index'):
                         last_modified = bkey['LastModified']
-                        print('Found child %s modified %s' % (child_location, last_modified))
+                        logger.debug('Found child %s modified %s' % (child_location, last_modified))
                     if last_modified is None:
                         # The child could not be found, remove it from the tree 
                         # TODO: should we attempt to delete all sub-objects at the prefix corresponding to the location?
+                        logger.warning('Child location %s not found, removing from composite' % (child_location))
                         children_element.remove(child)
                     else:
                         child_keys[child_location] = last_modified
-        print('Child keys: %s' % (pformat(child_keys)))
+        logger.debug('Child keys: %s' % (pformat(child_keys)))
         if child_regex is not None:
             pattern = re.compile(child_regex)
             child_keys = {ck: clm for ck, clm in child_keys.items() if pattern.fullmatch(ck) is not None}
-        print('Filtered child keys: %s' % (pformat(child_keys)))
+        logger.debug('Filtered child keys: %s' % (pformat(child_keys)))
         sorted_child_keys = sorted(child_keys.items(), reverse=True, key=lambda x: x[1])
-        print('Sorted child keys: %s' % (pformat(sorted_child_keys)))
+        logger.debug('Sorted child keys: %s' % (pformat(sorted_child_keys)))
         # filter to obtain the keys to delete
         retained_count = 0
         current_datetime = datetime.datetime.now()
@@ -105,12 +108,12 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
                     delete_keys.append(key)
                 else:
                     retained_count = retained_count + 1
-        print('Deleting children: %s' % (pformat(delete_keys)))
+        logger.debug('Deleting children: %s' % (pformat(delete_keys)))
         for child in delete_keys:
-            print('Deleting child %s at %s' % (child[0], urljoin(bucket_prefix, child[0])))
+            logger.info('Deleting child %s at %s' % (child[0], urljoin(bucket_prefix, child[0])))
             #P2CompositeUtils.remove_repository_from_composite(bucket_name, bucket_prefix, urljoin(bucket_prefix, child[0]))
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         return False
     return True
 
@@ -143,8 +146,10 @@ USAGE
     try:
         # Setup argument parser
         parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
-        parser.add_argument("-v", "--verbose",
-            dest="verbose", action="count", help="set verbosity level [default: %(default)s]")
+        parser.add_argument("--logging", dest="loglevel",
+            help="set logging verbosity level, one of CRITICAL, ERROR, WARNING, INFO, or DEBUG [default: %(default)s]",
+            metavar="loglevel",
+            default='INFO')
         parser.add_argument('-V', '--version',
             action='version', version=program_version_message)
         parser.add_argument('--bucket', dest="bucket",
@@ -182,20 +187,25 @@ USAGE
         retain_maximum = int(args.max)
         child_regex = args.name_regex
 
-        verbose = args.verbose
+        # assuming loglevel is bound to the string value obtained from the
+        # command line argument. Convert to upper case to allow the user to
+        # specify --logging=DEBUG or --logging=debug
+        numeric_level = getattr(logging, args.loglevel.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: %s' % args.loglevel)
+        logging.basicConfig()
+        logger.setLevel(numeric_level)
 
-        if verbose > 0:
-            print("Verbose mode on")
-            print(program_version_message)
-            print('AWS Bucket: %s' % (bucket_name))
-            print('Key prexix: %s' % (bucket_prefix))
-            print('Retaining for %d days.' % (retain_days))
-            print('Retaining between %d minimum and %d maximum children.' % (retain_minimum, retain_maximum))
-            print('Child search regex: %s' % (child_regex))
+        logger.info(program_version_message)
+        logger.info('AWS Bucket: %s' % (bucket_name))
+        logger.info('Key prexix: %s' % (bucket_prefix))
+        logger.info('Retaining for %d days.' % (retain_days))
+        logger.info('Retaining between %d minimum and %d maximum children.' % (retain_minimum, retain_maximum))
+        logger.info('Child search regex: %s' % (child_regex))
 
         cred = boto3.session.Session().get_credentials()
         if cred is None:
-            print('Please provide Boto3 credentials.')
+            sys.stderr.write('No AWS credentials. Please provide Boto3 credentials.\n')
             sys.exit(-1)
 
         manage_snapshots(bucket_name, bucket_prefix, retain_days, retain_minimum, retain_maximum, child_regex)
@@ -214,7 +224,7 @@ USAGE
 
 if __name__ == "__main__":
     if DEBUG:
-        sys.argv.append("-v")
+        sys.argv.append("--logging=DEBUG")
     if TESTRUN:
         import doctest
         doctest.testmod()

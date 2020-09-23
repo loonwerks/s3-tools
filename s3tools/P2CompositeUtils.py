@@ -28,6 +28,8 @@ from posixpath import join as urljoin
 
 import S3Utils
 
+logger = logging.getLogger('s3tools.P2CompositeUtils')
+
 COMPOSITE_ARTIFACTS_TEMPLATE = Template(
 '''<?xml version='1.0' encoding='UTF-8'?>
 <?compositeArtifactRepository version='1.0.0'?>
@@ -160,22 +162,22 @@ def get_composite_artifacts_xml(s3_client, bucket, repo_prefix):
     composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
     file_obj = tempfile.TemporaryFile()
     try:
-        print('Downloading object at key %s from bucket %s' % (composite_artifacts_key, bucket))
+        logger.debug('Downloading object at key %s from bucket %s' % (composite_artifacts_key, bucket))
         s3_client.download_fileobj(bucket, composite_artifacts_key, file_obj)
     except ClientError as e:
         if 'ResponseMetadata' in e.response and 'HTTPStatusCode' in e.response['ResponseMetadata'] and e.response['ResponseMetadata']['HTTPStatusCode'] == 404:
-            logging.info('{key} not found, generating initial composite artifacts'.format(key=composite_artifacts_key))
+            logger.info('{key} not found, generating initial composite artifacts'.format(key=composite_artifacts_key))
             file_obj.seek(0)
             file_obj.write(EMPTY_COMPOSITE_ARTIFACTS_XML.encode('utf-8'))
             file_obj.truncate()
         else:
-            logging.error(e)
+            logger.error(e)
             file_obj.close()
             raise e
     file_obj.seek(0)
     tree = ElementTree.parse(file_obj)
     file_obj.seek(0)
-    print(file_obj.read().decode())
+    logger.debug("Retrieved composite artifacts contents: %s" % (file_obj.read().decode()))
     file_obj.close()
     return tree
 
@@ -186,10 +188,11 @@ def store_composite_artifacts_xml(s3_client, bucket, repo_prefix, tree):
     file_obj.write(ElementTree.tostring(tree.getroot(), encoding='utf-8'))
     file_obj.truncate()
     try:
+        logger.info("Uploading composite artifacts to bucket %s at %s" % (bucket.name, composite_artifacts_key))
         S3Utils.upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
         file_obj.close()
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         file_obj.close()
         raise e
 
@@ -210,16 +213,16 @@ def remove_child_from_composite_artifacts(s3_client, bucket, repo_prefix, child_
     composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
     file_obj = tempfile.TemporaryFile()
     try:
-        print('Downloading object at key %s from bucket %s' % (composite_artifacts_key, bucket))
+        logger.info('Downloading object at key %s from bucket %s' % (composite_artifacts_key, bucket))
         s3_client.download_fileobj(bucket, composite_artifacts_key, file_obj)
     except ClientError as e:
         if 'ResponseMetadata' in e.response and 'HTTPStatusCode' in e.response['ResponseMetadata'] and e.response['ResponseMetadata']['HTTPStatusCode'] == 404:
-            logging.info('{key} not found, generating initial composite artifacts'.format(key=composite_artifacts_key))
+            logger.info('{key} not found, generating initial composite artifacts'.format(key=composite_artifacts_key))
             file_obj.seek(0)
             file_obj.write(EMPTY_COMPOSITE_ARTIFACTS_XML.encode('utf-8'))
             file_obj.truncate()
         else:
-            logging.error(e)
+            logger.error(e)
             raise e
     file_obj.seek(0)
     tree = ElementTree.parse(file_obj)
@@ -238,7 +241,7 @@ def remove_child_from_composite_artifacts(s3_client, bucket, repo_prefix, child_
         S3Utils.upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
         file_obj.close()
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         file_obj.close()
         raise e
 
@@ -256,15 +259,11 @@ def add_repository_to_composite(repository, bucket_name, prefix, new_child):
         s3_resource = session.resource('s3')
         s3_client = session.client('s3')
         bucket = s3_resource.Bucket(bucket_name)
-        #existing_children = get_common_prefixes(bucket, prefix)
         S3Utils.upload_repository(repository, s3_client, bucket, urljoin(prefix, new_child))
-        #children = existing_children + [new_child]
         timestamp = int(round(time.time() * 1000.0))
         add_child_to_composite_artifacts(s3_client, bucket.name, prefix, new_child, timestamp)
-        #upload_string(COMPOSITE_ARTIFACTS_TEMPLATE.render(name='Composite P2', contents=children, timestamp=timestamp), s3_client, bucket, urljoin(prefix, 'compositeArtifacts.xml'))
-        #upload_string(COMPOSITE_CONTENT_TEMPLATE.render(name='Composite P2', contents=children, timestamp=timestamp), s3_client, bucket, urljoin(prefix, 'compositeContents.xml'))
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         return False
     return True
 
@@ -285,7 +284,7 @@ def remove_repository_from_composite(bucket_name, prefix, child):
         timestamp = int(round(time.time() * 1000.0))
         remove_child_from_composite_artifacts(s3_client, bucket.name, prefix, child, timestamp)
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         return False
     return True
 

@@ -14,11 +14,13 @@ import boto3
 import logging
 import os
 import pathlib
-import pprint
 import tempfile
 
 from botocore.exceptions import ClientError
 from posixpath import join as urljoin
+from pprint import pformat
+
+logger = logging.getLogger('s3tools.S3Utils')
 
 def get_common_prefixes(bucket, prefix):
     """Get the prefixes common to the given prefix in the given bucket
@@ -31,10 +33,10 @@ def get_common_prefixes(bucket, prefix):
                                                    Prefix=prefix,
                                                    Delimiter='/')
     try:
-        pprint.pprint(query_result)
+        logger.debug("get common prefixes query result: %s" % pformat(query_result))
         common_prefixes = [o.get('Prefix') for o in query_result.get('CommonPrefixes')]
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         raise
     return common_prefixes
 
@@ -87,10 +89,10 @@ def upload_file(file_name, s3_client, bucket, object_name=None):
 
     # Upload the file
     try:
-        print('Uploading file {} to bucket {} key {}'.format(file_name, bucket.name, object_name))
+        logger.info('Uploading file {} to bucket {} key {}'.format(file_name, bucket.name, object_name))
         s3_client.upload_file(file_name, bucket.name, object_name, ExtraArgs={'ServerSideEncryption': 'AES256', 'ACL': 'public-read'})
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         raise
     return True
 
@@ -105,9 +107,9 @@ def upload_string(body, s3_client, bucket, object_name):
     """
     try:
         s3_client.put_object(Body=body, Bucket=bucket, Key=object_name, ExtraArgs={'ServerSideEncryption': 'AES256', 'ACL': 'public-read'})
-        print('Uploading string body to {} to {}'.format(object_name, bucket.name))
+        logger.info('Uploading string body to {} to {}'.format(object_name, bucket.name))
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         raise
     return True
 
@@ -127,7 +129,7 @@ def upload_repository(repository, s3_client, bucket, prefix):
                 upload_file(file_path, s3_client, bucket, 
                             urljoin(prefix, pathlib.PurePosixPath(os.path.relpath(file_path, repository))))
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         return False
     return True
 
@@ -140,9 +142,10 @@ def remove_repository(s3_client, bucket, prefix):
     :return: True if repository was removed, else False
     """
     try:
+        logger.info("Removing repository tree in bucket %s at %s" % (bucket.name, prefix))
         bucket.objects.filter(Prefix=prefix).delete()
     except ClientError as e:
-        logging.error(e)
+        logger.error(e)
         return False
     return True
 
@@ -167,13 +170,12 @@ def upload_file_object(s3_client, bucket, key, file):
     :param file: the file object to be uploaded
     """
     file.seek(0)
-    print('Uploading file_obj contents:')
-    print(file.read().decode())
+    logger.debug('Uploading file_obj contents: %s' % (file.read().decode()))
     file.seek(0)
-    print('Uploading file_obj to key %s in bucket %s' % (key, bucket))
+    logger.debug('Uploading file_obj to key %s in bucket %s' % (key, bucket))
     try:
        s3_client.upload_fileobj(file, bucket, key, ExtraArgs={'ServerSideEncryption': 'AES256', 'ACL': 'public-read'})
     except ClientError as e:
-        pprint.pprint(e.response)
-        logging.error(e)
+        logger.error("Response: %s" % (pformat(e.response)))
+        logger.error(e)
         raise e

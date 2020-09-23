@@ -15,7 +15,6 @@ It defines classes_and_methods
 import boto3
 import logging
 import os
-import pprint
 import sys
 import xml.etree.ElementTree as ElementTree
 
@@ -23,9 +22,12 @@ from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from gi.importer import repository
 from posixpath import join as urljoin
+from pprint import pformat
 
 import P2CompositeUtils
 import S3Utils
+
+logger = logging.getLogger('s3tools')
 
 __all__ = []
 __version__ = 0.1
@@ -70,8 +72,10 @@ USAGE
     try:
         # Setup argument parser
         parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
-        parser.add_argument("-v", "--verbose",
-            dest="verbose", action="count", help="set verbosity level [default: %(default)s]")
+        parser.add_argument("--logging", dest="loglevel",
+            help="set logging verbosity level, one of CRITICAL, ERROR, WARNING, INFO, or DEBUG [default: %(default)s]",
+            metavar="loglevel",
+            default='INFO')
         parser.add_argument('-V', '--version',
             action='version', version=program_version_message)
         parser.add_argument('--bucket', dest="bucket",
@@ -102,28 +106,33 @@ USAGE
         paths = [item for sublist in args.path for item in sublist]
         child_names = [item for sublist in ([] if args.child_name is None else args.child_name) for item in sublist]
 
-        verbose = args.verbose
+        # assuming loglevel is bound to the string value obtained from the
+        # command line argument. Convert to upper case to allow the user to
+        # specify --logging=DEBUG or --logging=debug
+        numeric_level = getattr(logging, args.loglevel.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: %s' % args.loglevel)
+        logging.basicConfig()
+        logger.setLevel(numeric_level)
 
-        if verbose > 0:
-            print("Verbose mode on")
-
-        pprint.pprint(paths)
-        pprint.pprint(child_names)
+        logger.info(program_version_message)
+        logger.info("Paths: %s" % (pformat(paths)))
+        logger.info("Child names: %s" % (pformat(child_names)))
 
         if len(child_names) == 0:
             child_names = [os.path.basename(os.path.normpath(p)) for p in paths]
 
         if len(paths) != len(child_names):
-            print("Unequal path and child name list lengths")
+            sys.stderr.write("Unequal path and child name list lengths\n")
             sys.exit(-1)
 
         cred = boto3.session.Session().get_credentials()
         if cred is None:
-            print('Please provide Boto3 credentials.')
+            sys.stderr.write('No AWS credentials. Please provide Boto3 credentials.\n')
             sys.exit(-1)
 
         for inpath, child_name in zip(paths, child_names):
-            print('add_repository_to_composite(%s, %s, %s, %s)' % (inpath, bucket_name, bucket_prefix, child_name))
+            logger.debug('add_repository_to_composite(%s, %s, %s, %s)' % (inpath, bucket_name, bucket_prefix, child_name))
             P2CompositeUtils.add_repository_to_composite(inpath, bucket_name, bucket_prefix, child_name)
 
         return 0
@@ -140,7 +149,7 @@ USAGE
 
 if __name__ == "__main__":
     if DEBUG:
-        sys.argv.append("-v")
+        sys.argv.append("--logging=DEBUG")
     if TESTRUN:
         import doctest
         doctest.testmod()
