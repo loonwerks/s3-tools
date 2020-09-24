@@ -111,7 +111,7 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
         logger.debug('Deleting children: %s' % (pformat(delete_keys)))
         for child in delete_keys:
             logger.info('Deleting child %s at %s' % (child[0], urljoin(bucket_prefix, child[0])))
-            #P2CompositeUtils.remove_repository_from_composite(bucket_name, bucket_prefix, urljoin(bucket_prefix, child[0]))
+            P2CompositeUtils.remove_repository_from_composite(bucket_name, bucket_prefix, urljoin(bucket_prefix, child[0]))
     except ClientError as e:
         logger.error(e)
         return False
