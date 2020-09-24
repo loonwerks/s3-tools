@@ -74,6 +74,18 @@ EMPTY_COMPOSITE_ARTIFACTS_XML = '''<?xml version='1.0' encoding='UTF-8'?>
 </repository>
 '''
 
+EMPTY_COMPOSITE_CONTENT_XML = '''<?xml version='1.0' encoding='UTF-8'?>
+<?compositeMetadataRepository version='1.0.0'?>
+<repository name='&quot;Eclipse Project Test Site&quot;'
+    type='org.eclipse.equinox.internal.p2.metadata.repository.CompositeMetadataRepository' version='1.0.0'>
+  <properties size='1'>
+    <property name='p2.timestamp' value='0000000000000'/>
+  </properties>
+  <children size='0'>
+  </children>
+</repository>
+'''
+
 def build_empty_composite_artifacts():
     repository = ElementTree.Element('repository')
     repository['name'] = '&quot;Eclipse Project Test Site&quot;'
@@ -89,19 +101,9 @@ def build_empty_composite_artifacts():
     return repository
 
 
-EMPTY_COMPOSITE_CONTENT_XML = '''<?xml version='1.0' encoding='UTF-8'?>
-<?compositeMetadataRepository version='1.0.0'?>
-<repository name='&quot;Eclipse Project Test Site&quot;'
-    type='org.eclipse.equinox.internal.p2.metadata.repository.CompositeMetadataRepository' version='1.0.0'>
-  <properties size='1'>
-    <property name='p2.timestamp' value='0000000000000'/>
-  </properties>
-  <children size='0'>
-  </children>
-</repository>
-'''
-
 def is_location_url(x):
+    """Check whether the 
+    """
     from urllib.parse import urlparse
     try:
         result = urlparse(x)
@@ -158,6 +160,24 @@ def write_to_string(element_tree_root):
 def read_from_string(xml_str):
     return ElementTree.fromstring(xml_str)
 
+def synch_compostite_artifacts_to_composite_content(s3_client, bucket_name, repo_prefix, composite_artifacts_tree):
+    composite_artifacts_root = composite_artifacts_tree.getroot()
+
+    file_obj = tempfile.TemporaryFile()
+    file_obj.write(EMPTY_COMPOSITE_CONTENT_XML.encode('utf-8'))
+    file_obj.truncate()
+    file_obj.seek(0)
+    composite_content_tree = ElementTree.parse(file_obj)
+    composite_content_root = composite_content_tree.getroot()
+    file_obj.seek(0)
+
+    for child in get_children_element(composite_artifacts_root).getchildren():
+        add_child(composite_content_root, child.get('location'))
+    for timestamp_property in get_timestamp_property(composite_artifacts_root):
+        update_timestamp(composite_content_root, timestamp_property.get('value'))
+
+    store_composite_content_xml(s3_client, bucket_name, repo_prefix, composite_content_tree)
+
 def get_composite_artifacts_xml(s3_client, bucket, repo_prefix):
     composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
     file_obj = tempfile.TemporaryFile()
@@ -181,51 +201,52 @@ def get_composite_artifacts_xml(s3_client, bucket, repo_prefix):
     file_obj.close()
     return tree
 
-def store_composite_artifacts_xml(s3_client, bucket, repo_prefix, tree):
+def store_composite_artifacts_xml(s3_client, bucket_name, repo_prefix, tree):
     composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
     file_obj = tempfile.TemporaryFile()
     file_obj.seek(0)
     file_obj.write(ElementTree.tostring(tree.getroot(), encoding='utf-8'))
     file_obj.truncate()
     try:
-        logger.info("Uploading composite artifacts to bucket %s at %s" % (bucket.name, composite_artifacts_key))
-        S3Utils.upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
+        logger.info("Uploading composite artifacts to bucket %s at %s" % (bucket_name, composite_artifacts_key))
+        S3Utils.upload_file_object(s3_client, bucket_name, composite_artifacts_key, file_obj)
         file_obj.close()
     except ClientError as e:
         logger.error(e)
         file_obj.close()
         raise e
 
-def add_child_to_composite_artifacts(s3_client, bucket, repo_prefix, child_location, new_timestamp=None):
+def store_composite_content_xml(s3_client, bucket_name, repo_prefix, tree):
+    composite_content_key = urljoin(repo_prefix, 'compositeContent.xml')
+    file_obj = tempfile.TemporaryFile()
+    file_obj.seek(0)
+    file_obj.write(ElementTree.tostring(tree.getroot(), encoding='utf-8'))
+    file_obj.truncate()
+    try:
+        logger.info("Uploading composite content to bucket %s at %s" % (bucket_name, composite_content_key))
+        S3Utils.upload_file_object(s3_client, bucket_name, composite_content_key, file_obj)
+        file_obj.close()
+    except ClientError as e:
+        logger.error(e)
+        file_obj.close()
+        raise e
+
+def add_child_to_composite_artifacts(s3_client, bucket_name, repo_prefix, child_location, new_timestamp=None):
     """Update the P2 compositeArtifacts.xml
     """
-    tree = get_composite_artifacts_xml(s3_client, bucket, repo_prefix)
+    tree = get_composite_artifacts_xml(s3_client, bucket_name, repo_prefix)
     root = tree.getroot()
     children = get_children_element(root)
     add_child(root, child_location)
     children.attrib['size'] = str(len(children))
     update_timestamp(root, new_timestamp)
-    store_composite_artifacts_xml(s3_client, bucket, repo_prefix, tree)
+    store_composite_artifacts_xml(s3_client, bucket_name, repo_prefix, tree)
+    synch_compostite_artifacts_to_composite_content(s3_client, bucket_name, repo_prefix, tree)
 
-def remove_child_from_composite_artifacts(s3_client, bucket, repo_prefix, child_location, new_timestamp=None):
+def remove_child_from_composite_artifacts(s3_client, bucket_name, repo_prefix, child_location, new_timestamp=None):
     """Update the P2 compositeArtifacts.xml
     """
-    composite_artifacts_key = urljoin(repo_prefix, 'compositeArtifacts.xml')
-    file_obj = tempfile.TemporaryFile()
-    try:
-        logger.info('Downloading object at key %s from bucket %s' % (composite_artifacts_key, bucket))
-        s3_client.download_fileobj(bucket, composite_artifacts_key, file_obj)
-    except ClientError as e:
-        if 'ResponseMetadata' in e.response and 'HTTPStatusCode' in e.response['ResponseMetadata'] and e.response['ResponseMetadata']['HTTPStatusCode'] == 404:
-            logger.info('{key} not found, generating initial composite artifacts'.format(key=composite_artifacts_key))
-            file_obj.seek(0)
-            file_obj.write(EMPTY_COMPOSITE_ARTIFACTS_XML.encode('utf-8'))
-            file_obj.truncate()
-        else:
-            logger.error(e)
-            raise e
-    file_obj.seek(0)
-    tree = ElementTree.parse(file_obj)
+    tree = get_composite_artifacts_xml(s3_client, bucket_name, repo_prefix)
     root = tree.getroot()
     children = get_children_element(root)
     for child in children:
@@ -234,16 +255,8 @@ def remove_child_from_composite_artifacts(s3_client, bucket, repo_prefix, child_
             children.remove(child)
     children.attrib['size'] = str(len(children))
     update_timestamp(root, new_timestamp)
-    file_obj.seek(0)
-    file_obj.write(ElementTree.tostring(root, encoding='utf-8'))
-    file_obj.truncate()
-    try:
-        S3Utils.upload_file_object(s3_client, bucket, composite_artifacts_key, file_obj)
-        file_obj.close()
-    except ClientError as e:
-        logger.error(e)
-        file_obj.close()
-        raise e
+    store_composite_artifacts_xml(s3_client, bucket_name, repo_prefix, tree)
+    synch_compostite_artifacts_to_composite_content(s3_client, bucket_name, repo_prefix, tree)
 
 def add_repository_to_composite(repository, bucket_name, prefix, new_child):
     """Upload a P2 repository to a prefix containing a composite repository on an S3 bucket
@@ -280,9 +293,9 @@ def remove_repository_from_composite(bucket_name, prefix, child):
         s3_resource = session.resource('s3')
         s3_client = session.client('s3')
         bucket = s3_resource.Bucket(bucket_name)
-        S3Utils.remove_repository(s3_client, bucket, urljoin(prefix, child))
         timestamp = int(round(time.time() * 1000.0))
         remove_child_from_composite_artifacts(s3_client, bucket.name, prefix, child, timestamp)
+        S3Utils.remove_repository(s3_client, bucket, urljoin(prefix, child))
     except ClientError as e:
         logger.error(e)
         return False
