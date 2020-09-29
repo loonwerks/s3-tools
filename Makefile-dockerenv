@@ -1,8 +1,5 @@
 #! /usr/bin/make
 
-mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
-current_dir := $(notdir $(patsubst %/,%,$(dir $(mkfile_path))))
-
 # Extra vars
 DOCKER_BUILD ?= docker build
 DOCKER_FLAGS ?= --force-rm=true
@@ -29,7 +26,7 @@ build_user:
 		--build-arg=UID=$(shell id -u) \
 		--build-arg=GID=$(shell id -g) \
 		--build-arg=GROUP=$(shell id -gn) \
-		-f $(current_dir)/Dockerfile \
+		-f Dockerfile \
 		-t $(USER_IMG) \
 		.
 
