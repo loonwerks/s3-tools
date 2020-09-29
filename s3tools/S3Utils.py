@@ -58,18 +58,18 @@ def get_matching_s3_contents(bucket, prefix='', suffix=''):
 
     while True:
 
-        # The S3 API response is a large blob of metadata.
-        # 'Contents' contains information about the listed objects.
-        resp = s3.list_objects_v2(**kwargs)
-        for obj in resp['Contents']:
-            key = obj['Key']
-            if key.startswith(prefix) and key.endswith(suffix):
-                yield obj
-
-        # The S3 API is paginated, returning up to 1000 keys at a time.
-        # Pass the continuation token into the next response, until we
-        # reach the final page (when this field is missing).
         try:
+            # The S3 API response is a large blob of metadata.
+            # 'Contents' contains information about the listed objects.
+            resp = s3.list_objects_v2(**kwargs)
+            for obj in resp['Contents']:
+                key = obj['Key']
+                if key.startswith(prefix) and key.endswith(suffix):
+                    yield obj
+
+            # The S3 API is paginated, returning up to 1000 keys at a time.
+            # Pass the continuation token into the next response, until we
+            # reach the final page (when this field is missing).
             kwargs['ContinuationToken'] = resp['NextContinuationToken']
         except KeyError:
             break
