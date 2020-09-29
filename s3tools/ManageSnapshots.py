@@ -95,8 +95,10 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
         logger.debug('Sorted child keys: %s' % (pformat(sorted_child_keys)))
         # filter to obtain the keys to delete
         retained_count = 0
-        current_datetime = datetime.datetime.now()
+        current_datetime = datetime.datetime.now(datetime.timezone.utc)
+        logger.debug('Current datetime is %s' % (current_datetime))
         retain_after = None if retain_days is None else (current_datetime - datetime.timedelta(days=retain_days))
+        logger.debug('Retaining snapshots after datetime %s' % (retain_after))
         delete_keys = []
         for key in sorted_child_keys:
             if retain_minimum is not None and retained_count < retain_minimum:
