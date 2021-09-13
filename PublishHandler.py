@@ -19,6 +19,7 @@ logger.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
     logger.info('Event: %s', event)
+    logger.info('Context: %s', context)
     if isinstance(event, dict):
         try:
             add_repository_to_composite(event['inpath'], event['bucket_name'], event['bucket_prefix'], event['child_name'])
