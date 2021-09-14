@@ -7,11 +7,13 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - pip3 install --target . boto3 mako testresources
+      - pip3 install --target ./package boto3 mako testresources
+      - cd package && zip -r ../s3tools-deployment-package.zip . && cd ..
+      - zip -g s3tools-deployment-package.zip *.py s3tools/*
   post_build:
     commands:
       - echo Build completed on `date`
 
 artifacts:
   files:
-    - **/*
+    - s3tools-deployment-package.zip
