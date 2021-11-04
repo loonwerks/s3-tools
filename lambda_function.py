@@ -55,7 +55,7 @@ def lambda_handler(event, context):
     if isinstance(event, dict):
         try:
             add_repository_to_composite(event['inpath'], event['bucket_name'], event['bucket_prefix'], event['child_name'])
-            message = f'Published {event['inpath']} to {event['bucket_name']}/{event['bucket_prefix']}/{event['child_name']}'
+            message = f'''Published {event['inpath']} to {event['bucket_name']}/{event['bucket_prefix']}/{event['child_name']}'''
             put_job_success(job_id)
             logger.info('%s, returning 200 OK respnse', message)
             return {
