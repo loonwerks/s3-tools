@@ -28,8 +28,8 @@ from posixpath import join as urljoin
 from posixpath import sep as urlpathsep
 from pprint import pformat
 
-import P2CompositeUtils
-import S3Utils
+from . import P2CompositeUtils
+from . import S3Utils
 
 logger = logging.getLogger('s3tools')
 

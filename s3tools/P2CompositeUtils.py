@@ -26,7 +26,7 @@ from botocore.exceptions import ClientError
 from mako.template import Template
 from posixpath import join as urljoin
 
-import S3Utils
+from . import S3Utils
 
 logger = logging.getLogger('s3tools.P2CompositeUtils')
 
