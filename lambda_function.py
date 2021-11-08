@@ -53,7 +53,7 @@ def put_job_failure(job_id, message):
 def lambda_handler(event, context):
     logger.info('Event: %s', event)
     logger.info('Context: %s', context)
-    job_id = event["CodePipeline.job"].id
+    job_id = event["CodePipeline.job"]["id"]
     if isinstance(event, dict):
         try:
             add_repository_to_composite(event['inpath'], event['bucket_name'], event['bucket_prefix'], event['child_name'])
