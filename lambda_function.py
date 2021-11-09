@@ -56,8 +56,9 @@ def lambda_handler(event, context):
     job_id = event["CodePipeline.job"]["id"]
     if isinstance(event, dict):
         try:
-            add_repository_to_composite(event['inpath'], event['bucket_name'], event['bucket_prefix'], event['child_name'])
-            message = f'''Published {event['inpath']} to {event['bucket_name']}/{event['bucket_prefix']}/{event['child_name']}'''
+            user_parameters = event['data']['actionConfiguration']['configuration']['UserParameters']
+            add_repository_to_composite(user_parameters['inpath'], user_parameters['bucket_name'], user_parameters['bucket_prefix'], user_parameters['child_name'])
+            message = f'''Published {user_parameters['inpath']} to {user_parameters['bucket_name']}/{user_parameters['bucket_prefix']}/{user_parameters['child_name']}'''
             put_job_success(job_id)
             logger.info('%s, returning 200 OK respnse', message)
             return {
