@@ -57,7 +57,7 @@ def lambda_handler(event, context):
     job_id = event["CodePipeline.job"]["id"]
     if isinstance(event, dict):
         try:
-            user_parameters = event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters']
+            user_parameters = json.loads(event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters'])
             add_repository_to_composite(user_parameters['inpath'], user_parameters['bucket_name'], user_parameters['bucket_prefix'], user_parameters['child_name'])
             message = f'''Published {user_parameters['inpath']} to {user_parameters['bucket_name']}/{user_parameters['bucket_prefix']}/{user_parameters['child_name']}'''
             put_job_success(job_id)
