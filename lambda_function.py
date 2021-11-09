@@ -67,10 +67,10 @@ def lambda_handler(event, context):
             },
             "body": message
             }
-        except KeyError:
+        except KeyError as e:
             codepipeline_client.put_job_failure_result(
                 jobId=event["CodePipeline.job"]["id"],
-                failureDetails={"type": "ConfigurationError", "message": "Missing Parameters!"}
+                failureDetails={"type": "ConfigurationError", "message": f"Missing Parameters: {repr(e)}"}
             )
         except Exception as e:
             message = f'Exception occurred {repr(e)}'
