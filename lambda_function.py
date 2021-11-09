@@ -12,6 +12,7 @@ import boto3
 import os
 import json
 import logging
+import traceback
 
 from s3tools.P2CompositeUtils import add_repository_to_composite
 
@@ -74,7 +75,7 @@ def lambda_handler(event, context):
                 failureDetails={"type": "ConfigurationError", "message": f"Missing Parameters: {repr(e)}"}
             )
         except Exception as e:
-            message = f'Exception occurred {repr(e)}'
+            message = f'Exception occurred {repr(e)} : {traceback.format_exc()}'
             put_job_failure(job_id, message)
             logger.error('%s, returning 417 response', message)
             return {
