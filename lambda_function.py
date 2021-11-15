@@ -9,6 +9,7 @@ PublishHandler -- AWS Lambda handler for publishing into a composite P2 reposito
 '''
 
 import boto3
+import botocore
 import os
 import json
 import logging
