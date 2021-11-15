@@ -16,6 +16,7 @@ import tempfile
 import traceback
 import zipfile
 
+from boto3.session import Session
 from s3tools.P2CompositeUtils import add_repository_to_composite
 
 logger = logging.getLogger()
