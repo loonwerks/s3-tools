@@ -12,7 +12,9 @@ import boto3
 import os
 import json
 import logging
+import tempfile
 import traceback
+import zipfile
 
 from s3tools.P2CompositeUtils import add_repository_to_composite
 
@@ -35,7 +37,7 @@ def put_job_success(job_id):
             'percentComplete': 100
         }
     )
-    
+
 def put_job_failure(job_id, message):
     """Notify AWS CodePipeline of a successful job.
 
@@ -50,13 +52,57 @@ def put_job_failure(job_id, message):
             'percentComplete': 100
         }
     )
+
+def extract_artifacts(s3, artifacts):
+    """Extract the CodePipeline input artifacts from the artifact store
     
+    Arguments:
+        s3: S3 client at which to find the artifacts
+        artifacts: The list of artifacts available to the function
+    """
+    logger.info('Extracting input artifacts...')
+    for artifact in artifacts:
+        tmp_file = tempfile.NamedTemporaryFile()
+        bucket = artifact['location']['s3Location']['bucketName']
+        key = artifact['location']['s3Location']['objectKey']
+        logger.info('  extracting %s/%s', bucket, key)
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            s3.download_file(bucket, key, tmp_file.name)
+            with zipfile.ZipFile(tmp_file.name, 'r') as zip:
+                zip.extractall()
+    logger.info('Extracting input artifacts complete.')
+
+def setup_s3_client(job_data):
+    """Creates an S3 client
+    
+    Uses the credentials passed in the event by CodePipeline. These
+    credentials can be used to access the artifact bucket.
+    
+    Args:
+        job_data: The job data structure
+        
+    Returns:
+        An S3 client with the appropriate credentials
+        
+    """
+    key_id = job_data['artifactCredentials']['accessKeyId']
+    key_secret = job_data['artifactCredentials']['secretAccessKey']
+    session_token = job_data['artifactCredentials']['sessionToken']
+    
+    session = Session(aws_access_key_id=key_id,
+        aws_secret_access_key=key_secret,
+        aws_session_token=session_token)
+    return session.client('s3', config=botocore.client.Config(signature_version='s3v4'))
+
 def lambda_handler(event, context):
-    logger.info('Event: %s', event)
     logger.info('Context: %s', context)
-    job_id = event["CodePipeline.job"]["id"]
+    job_id = event['CodePipeline.job']['id']
+    job_data = event['CodePipeline.job']['data']
+    artifacts = job_data['inputArtifacts']
     if isinstance(event, dict):
         try:
+            s3 = setup_s3_client(job_data)
+            extract_artifacts(s3, artifacts)
             user_parameters = json.loads(event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters'])
             add_repository_to_composite(user_parameters['inpath'], user_parameters['bucket_name'], user_parameters['bucket_prefix'], user_parameters['child_name'])
             message = f'''Published {user_parameters['inpath']} to {user_parameters['bucket_name']}/{user_parameters['bucket_prefix']}/{user_parameters['child_name']}'''
