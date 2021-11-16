@@ -16,17 +16,12 @@ import boto3
 import logging
 import os
 import sys
-import xml.etree.ElementTree as ElementTree
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-from botocore.exceptions import ClientError
-from mako.template import Template
-from posixpath import join as urljoin
 from pprint import pformat
 
 import P2CompositeUtils
-import S3Utils
 
 logger = logging.getLogger('s3tools')
 

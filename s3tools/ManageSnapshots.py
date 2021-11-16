@@ -18,14 +18,11 @@ import logging
 import os
 import re
 import sys
-import xml.etree.ElementTree as ElementTree
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from botocore.exceptions import ClientError
-from gi.importer import repository
 from posixpath import join as urljoin
-from posixpath import sep as urlpathsep
 from pprint import pformat
 
 import P2CompositeUtils

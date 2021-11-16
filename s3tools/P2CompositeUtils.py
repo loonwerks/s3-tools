@@ -16,7 +16,6 @@ compositeContent.xml specification.
 
 import boto3
 import logging
-import os
 import tempfile
 import time
 
