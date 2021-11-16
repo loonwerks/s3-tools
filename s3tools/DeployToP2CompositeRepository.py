@@ -20,7 +20,8 @@ import xml.etree.ElementTree as ElementTree
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
-from gi.importer import repository
+from botocore.exceptions import ClientError
+from mako.template import Template
 from posixpath import join as urljoin
 from pprint import pformat
 
