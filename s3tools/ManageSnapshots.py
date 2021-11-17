@@ -56,7 +56,7 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
         root = tree.getroot()
         children_element = P2CompositeUtils.get_children_element(root)
         child_keys = {}
-        for child in children_element.getchildren():
+        for child in children_element:
             child_location = child.get('location')
             logger.info('Checking child location %s' % (child_location))
             if child_location is None:

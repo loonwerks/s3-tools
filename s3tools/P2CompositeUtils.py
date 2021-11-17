@@ -85,6 +85,7 @@ EMPTY_COMPOSITE_CONTENT_XML = '''<?xml version='1.0' encoding='UTF-8'?>
 </repository>
 '''
 
+@deprecated(reason="Nasty")
 def build_empty_composite_artifacts():
     repository = ElementTree.Element('repository')
     repository['name'] = '&quot;Eclipse Project Test Site&quot;'
@@ -170,7 +171,7 @@ def synch_compostite_artifacts_to_composite_content(s3_client, bucket_name, repo
     composite_content_root = composite_content_tree.getroot()
     file_obj.seek(0)
 
-    for child in get_children_element(composite_artifacts_root).getchildren():
+    for child in get_children_element(composite_artifacts_root):
         add_child(composite_content_root, child.get('location'))
     for timestamp_property in get_timestamp_property(composite_artifacts_root):
         update_timestamp(composite_content_root, timestamp_property.get('value'))
