@@ -85,7 +85,6 @@ EMPTY_COMPOSITE_CONTENT_XML = '''<?xml version='1.0' encoding='UTF-8'?>
 </repository>
 '''
 
-@deprecated(reason="Nasty")
 def build_empty_composite_artifacts():
     repository = ElementTree.Element('repository')
     repository['name'] = '&quot;Eclipse Project Test Site&quot;'
