@@ -28,7 +28,7 @@ from pprint import pformat
 import P2CompositeUtils
 import S3Utils
 
-logger = logging.getLogger('s3tools')
+logger = logging.getLogger('s3tools.ManageSnapshots')
 
 __all__ = []
 __version__ = 0.1
@@ -46,7 +46,7 @@ DEFAULT_BUCKET_PREFIX = '''p2'''
 PRODUCT_ASSET_PATTERN = re.compile(r'com.collins.fmw.ide-\d+\.\d+\.\d+-(\d{12})-.*')
 
 
-def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=3, retain_maximum=20, child_regex=None):
+def manage_snapshots(bucket_name, bucket_prefix, retain_days=90, retain_minimum=3, retain_maximum=20, child_regex=None):
     try:
         session = boto3.Session()
         s3_resource = session.resource('s3')
@@ -110,7 +110,7 @@ def manage_snapshots(bucket_name, bucket_prefix, retain_days=30, retain_minimum=
         logger.debug('Deleting children: %s' % (pformat(delete_keys)))
         for child in delete_keys:
             logger.info('Deleting child %s at %s' % (child[0], urljoin(bucket_prefix, child[0])))
-            P2CompositeUtils.remove_repository_from_composite(bucket_name, bucket_prefix, urljoin(bucket_prefix, child[0]))
+            P2CompositeUtils.remove_repository_from_composite(bucket_name, bucket_prefix, child[0])
     except ClientError as e:
         logger.error(e)
         return False
