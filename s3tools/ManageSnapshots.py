@@ -35,7 +35,7 @@ __version__ = 0.1
 __date__ = '2020-07-21'
 __updated__ = '2020-07-21'
 
-DEBUG = 1
+DEBUG = 0
 TESTRUN = 0
 PROFILE = 0
 
