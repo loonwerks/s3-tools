@@ -143,7 +143,10 @@ def remove_repository(s3_client, bucket, prefix):
     """
     try:
         logger.info("Removing repository tree in bucket %s at %s" % (bucket.name, prefix))
-        bucket.objects.filter(Prefix=prefix).delete()
+        #bucket.objects.filter(Prefix=prefix).delete()
+        for obj in bucket.objects.filter(Prefix=prefix):
+            logger.debug('deleting %s:%s' % (bucket.name, obj.key))
+            obj.delete()
     except ClientError as e:
         logger.error(e)
         return False
