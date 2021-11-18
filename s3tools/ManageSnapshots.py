@@ -28,7 +28,7 @@ from pprint import pformat
 import P2CompositeUtils
 import S3Utils
 
-logger = logging.getLogger('s3tools.ManageSnapshots')
+logger = logging.getLogger('s3tools')
 
 __all__ = []
 __version__ = 0.1
